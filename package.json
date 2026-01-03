@@ -1,0 +1,27 @@
+{
+  "name": "@e11community/envar-mash",
+  "version": "1.0.0",
+  "description": "Combine environment variables together from across different sources",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "package": "ncc build",
+    "all": "npm run build && npm run package"
+  },
+  "keywords": [
+    "envar",
+    "typescript"
+  ],
+  "author": "Engineering 11",
+  "repository": {
+    "url": "https://github.com/e11community/envar-mash",
+    "type": "git"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@vercel/ncc": "^0.38.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  }
+}

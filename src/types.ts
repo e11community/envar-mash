@@ -1,0 +1,1 @@
+type Env = process.env
