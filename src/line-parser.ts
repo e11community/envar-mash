@@ -1,36 +1,45 @@
 import {Context, ParseContext, resolve} from './context'
 
 export type ParseState = 'normal' | 'single-quote' | 'double-quote' | 'maybe-placeholder' | 'escaping'
+export type LinePivot = 'key' | 'value'
 
 export type ParseLineRequest = {
+  readonly curLinePivot?: LinePivot
   readonly curState: ParseState
-  readonly doBuffering: boolean
   readonly parseContext: ParseContext
   readonly env: Context
   readonly line: string
-  readonly listener: PlaceholderListener
+  readonly listener: FileListener
   readonly logic: Context
 }
 
 export type ParseLineResponse = {
   readonly buffer: string
   readonly curState: ParseState
+  readonly curLinePivot: LinePivot
 }
 
-export type PlaceholderListener = {
-  onMissing: (parseContext: ParseContext, key: string) => void
+export type FileListener = {
+  onNoKeyPair: (parseContext: ParseContext, line: string) => void
+  onMissingPlaceholder: (parseContext: ParseContext, key: string) => void
 }
 
-export const WarningPlaceholderListener: PlaceholderListener = {
-  onMissing: (parseContext: ParseContext, key: string) => {
+export const WarningFileListener: FileListener = {
+  onNoKeyPair: (parseContext: ParseContext, line: string): void => {
+    console.warn(`No keypair detected in content line [${line}] found in file[${parseContext.filePath}] at line [${parseContext.line}]`)
+  },
+  onMissingPlaceholder: (parseContext: ParseContext, key: string): void => {
     console.warn(
       `Logic contexts have no defined value for key [${key}] found in file [${parseContext.filePath}] at line [${parseContext.line}], col [${parseContext.col}]`,
     )
   },
 }
 
-export const ThrowingPlaceholderListener: PlaceholderListener = {
-  onMissing: (parseContext: ParseContext, key: string) => {
+export const ThrowingFileListener: FileListener = {
+  onNoKeyPair: (parseContext: ParseContext, line: string): void => {
+    throw new Error(`No keypair detected in content line [${line}] found in file[${parseContext.filePath}] at line [${parseContext.line}]`)
+  },
+  onMissingPlaceholder: (parseContext: ParseContext, key: string) => {
     throw new Error(
       `Logic contexts have no defined value for key [${key}] found in file [${parseContext.filePath}] at line [${parseContext.line}], col [${parseContext.col}]`,
     )
@@ -38,9 +47,10 @@ export const ThrowingPlaceholderListener: PlaceholderListener = {
 }
 
 export function parseLine(request: ParseLineRequest): ParseLineResponse {
-  if (request.line.length === 0) return {buffer: '', curState: request.curState}
-  let {curState, doBuffering} = request
+  if (request.line.length === 0) return {buffer: '', curState: request.curState, curLinePivot: request.curLinePivot || 'key'}
+  let {curState} = request
   let prevState: ParseState = request.curState
+  let curLinePivot = request.curLinePivot || 'key'
   let buffer = ''
   let curChar = ''
   let prevChar = ''
@@ -57,12 +67,16 @@ export function parseLine(request: ParseLineRequest): ParseLineResponse {
         prevState = curState
         curState = 'double-quote'
       } else if (curChar === '#') {
-        if (doBuffering) buffer += request.line.substring(posCur)
-        return {buffer, curState}
+        buffer += request.line.substring(posCur)
+        return {buffer, curState, curLinePivot}
       } else if (curChar === '{' && prevChar === '$') {
         prevState = curState
         curState = 'maybe-placeholder'
         posBuffer = posCur - 1
+        buffer = buffer.slice(0, -1)
+      } else if (curLinePivot === 'key' && curChar === '=') {
+        curLinePivot = 'value'
+        buffer += curChar
       } else {
         buffer += curChar
       }
@@ -70,47 +84,47 @@ export function parseLine(request: ParseLineRequest): ParseLineResponse {
       if (curChar === '\\') {
         prevState = curState
         curState = 'escaping'
-        if (doBuffering) buffer += curChar
+        buffer += curChar
       } else if (curChar === '"') {
         prevState = curState
         curState = 'normal'
-        if (doBuffering) buffer += curChar
+        buffer += curChar
       } else if (curChar === '{' && prevChar === '$') {
         prevState = curState
         curState = 'maybe-placeholder'
         posBuffer = posCur - 1
+        buffer = buffer.slice(0, -1)
       } else {
-        if (doBuffering) buffer += curChar
+        buffer += curChar
       }
     } else if (curState === 'single-quote') {
       if (curChar === '\\') {
         prevState = curState
         curState = 'escaping'
-        if (doBuffering) buffer += curChar
+        buffer += curChar
       } else if (curChar === '"') {
         prevState = curState
         curState = 'normal'
-        if (doBuffering) buffer += curChar
+        buffer += curChar
       } else {
-        if (doBuffering) buffer += curChar
+        buffer += curChar
       }
     } else if (curState === 'maybe-placeholder') {
       if (curChar === '}') {
-        const key = request.line.substring(posBuffer + 2, posCur - (posBuffer + 2))
+        const key = request.line.substring(posBuffer + 2, posCur)
         let lookup = resolve(key, request.env, request.logic)
         if (lookup === undefined) {
-          request.listener.onMissing(request.parseContext, key)
+          request.listener.onMissingPlaceholder(request.parseContext, key)
           lookup = ''
         }
-        if (doBuffering) buffer += lookup
-        request.logic[key] = lookup
+        buffer += lookup
         curState = prevState
       }
     } else if (curState === 'escaping') {
-      if (doBuffering) buffer += curChar
+      buffer += curChar
       curState = prevState
     }
   }
 
-  return {buffer, curState}
+  return {buffer, curState, curLinePivot}
 }

@@ -1,7 +1,7 @@
 import {readdirSync, readFileSync, statSync, writeFileSync} from 'fs'
 import {join} from 'path'
-import {Context} from './context'
-import {ParseState, PlaceholderListener, ThrowingPlaceholderListener, WarningPlaceholderListener, parseLine} from './line-parser'
+import {Context, ParseContext} from './context'
+import {ParseState, FileListener, ThrowingFileListener, WarningFileListener, parseLine, LinePivot} from './line-parser'
 
 type MashRequest = {
   readonly dirTarget: string
@@ -26,7 +26,7 @@ type ParseFileRequest = {
   /**
    * Strategy for handling placeholder events, such as not being resolved.
    */
-  readonly listener: PlaceholderListener
+  readonly listener: FileListener
 
   /**
    * Mutable logical context.
@@ -42,27 +42,43 @@ export function parseFile(request: ParseFileRequest): void {
   const lines = contents.split('\n')
   let data = ''
   let curState: ParseState = 'normal'
+  let curLinePivot: LinePivot = 'key'
   for (let iLine = 0; iLine < lines.length; ++iLine) {
+    const parseContext: ParseContext = {
+      col: 1,
+      filePath,
+      line: iLine + 1,
+    }
     const response = parseLine({
       curState,
-      doBuffering: !!outputPath,
       env,
       line: lines[iLine],
       listener,
       logic,
-      parseContext: {
-        col: 1,
-        filePath,
-        line: iLine + 1,
-      },
+      parseContext,
     })
     curState = response.curState
-    if (outputPath) data += response.buffer
+    curLinePivot = response.curLinePivot
+    const {buffer} = response
+    if (buffer.trim().length === 0) continue
+    if (curLinePivot === 'key') listener.onNoKeyPair(parseContext, buffer)
+    addendLogic(logic, buffer)
+    if (outputPath) {
+      data += response.buffer + '\n'
+    }
   }
 
   if (outputPath) {
     writeFileSync(outputPath, data, {encoding: 'utf8'})
   }
+}
+
+function addendLogic(logic: Context, line: string): void {
+  const iPos = line.indexOf('=')
+  const key = line.substring(0, iPos)
+  const value = line.substring(iPos + 1)
+  // TODO "evaluate" value so logic does not have enclosing quotes
+  logic[key] = value
 }
 
 export function main(request: MashRequest): number {
@@ -75,7 +91,7 @@ export function main(request: MashRequest): number {
 
   const env: Context = process.env
   const logic: Context = {}
-  const listener: PlaceholderListener = request.listenerType === 'throw' ? ThrowingPlaceholderListener : WarningPlaceholderListener
+  const listener: FileListener = request.listenerType === 'throw' ? ThrowingFileListener : WarningFileListener
 
   const statTop = statSync(request.dirTop, {throwIfNoEntry: false})
   if (statTop) {
