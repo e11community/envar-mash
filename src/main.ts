@@ -11,14 +11,32 @@ type MashRequest = {
 }
 
 type ParseFileRequest = {
+  /** Path to file to be parsed for variables. */
   readonly filePath: string
+
+  /**
+   * Write placeholder resolution of **filePath** to this **path**.
+   * If undefined, no file output, but logic context is still updated.
+   */
   readonly outputPath?: string
-  readonly env: Context
+
+  /** Process environment variables. Highest precedence for placeholder resolution. */
+  readonly env: Readonly<Context>
+
+  /**
+   * Strategy for handling placeholder events, such as not being resolved.
+   */
   readonly listener: PlaceholderListener
+
+  /**
+   * Mutable logical context.
+   * As variables are resolved, this object is updated.
+   * Lower precedence for placeholder resolution.
+   */
   readonly logic: Context
 }
 
-function parseFile(request: ParseFileRequest): void {
+export function parseFile(request: ParseFileRequest): void {
   const {env, filePath, listener, logic, outputPath} = request
   const contents = readFileSync(filePath, {encoding: 'utf8'})
   const lines = contents.split('\n')
