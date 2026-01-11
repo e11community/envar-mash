@@ -3,31 +3,36 @@ import {
   parseLine,
   ParseLineRequest,
   ParseState,
-  PlaceholderListener,
-  ThrowingPlaceholderListener,
-  WarningPlaceholderListener,
+  LinePivot,
+  FileListener,
+  ThrowingFileListener,
+  WarningFileListener,
 } from './line-parser'
 
 describe('parseLine', () => {
   const defaultParseContext = {filePath: 'test.env', line: 1, col: 1}
+  const silentListener: FileListener = {
+    onNoKeyPair: jest.fn(),
+    onMissingPlaceholder: jest.fn(),
+  }
 
   function makeParseLine(
     line: string,
     options: {
       curState?: ParseState
-      doBuffering?: boolean
+      curLinePivot?: LinePivot
       env?: Context
       logic?: Context
-      listener?: PlaceholderListener
+      listener?: FileListener
     } = {},
   ): ReturnType<typeof parseLine> {
     const logic = options.logic ?? {}
     const request: ParseLineRequest = {
       curState: options.curState ?? 'normal',
-      doBuffering: options.doBuffering ?? true,
+      curLinePivot: options.curLinePivot,
       env: options.env ?? {},
       line,
-      listener: options.listener ?? WarningPlaceholderListener,
+      listener: options.listener ?? silentListener,
       logic,
       parseContext: defaultParseContext,
     }
@@ -39,17 +44,29 @@ describe('parseLine', () => {
       const result = makeParseLine('')
       expect(result.buffer).toBe('')
       expect(result.curState).toBe('normal')
+      expect(result.curLinePivot).toBe('key')
     })
 
     it('parses simple key=value', () => {
       const result = makeParseLine('FOO=bar')
       expect(result.buffer).toBe('FOO=bar')
       expect(result.curState).toBe('normal')
+      expect(result.curLinePivot).toBe('value')
     })
 
     it('handles comments by stopping at #', () => {
       const result = makeParseLine('FOO=bar # this is a comment')
       expect(result.buffer).toBe('FOO=bar # this is a comment')
+    })
+
+    it('tracks pivot transition from key to value at =', () => {
+      const result = makeParseLine('KEY=value')
+      expect(result.curLinePivot).toBe('value')
+    })
+
+    it('stays in key pivot if no = found', () => {
+      const result = makeParseLine('JUST_A_KEY')
+      expect(result.curLinePivot).toBe('key')
     })
   })
 
@@ -96,13 +113,6 @@ describe('parseLine', () => {
       expect(result.buffer).toBe('FOO=value"')
     })
 
-    it('updates logic context with resolved value', () => {
-      const env: Context = {BAR: 'resolved'}
-      const logic: Context = {}
-      makeParseLine('FOO=${BAR}', {env, logic})
-      expect(logic['BAR']).toBe('resolved')
-    })
-
     it('handles multiple placeholders on same line', () => {
       const env: Context = {A: 'first', B: 'second'}
       const result = makeParseLine('FOO=${A}-${B}', {env})
@@ -111,11 +121,11 @@ describe('parseLine', () => {
   })
 
   describe('missing placeholder handling', () => {
-    it('calls listener onMissing when placeholder not found', () => {
-      const onMissing = jest.fn()
-      const listener: PlaceholderListener = {onMissing}
+    it('calls listener onMissingPlaceholder when placeholder not found', () => {
+      const onMissingPlaceholder = jest.fn()
+      const listener: FileListener = {onNoKeyPair: jest.fn(), onMissingPlaceholder}
       makeParseLine('FOO=${MISSING}', {listener})
-      expect(onMissing).toHaveBeenCalledWith(defaultParseContext, 'MISSING')
+      expect(onMissingPlaceholder).toHaveBeenCalledWith(defaultParseContext, 'MISSING')
     })
 
     it('substitutes empty string for missing placeholder', () => {
@@ -123,26 +133,12 @@ describe('parseLine', () => {
       expect(result.buffer).toBe('FOO=')
     })
   })
-
-  describe('buffering control', () => {
-    it('returns empty buffer when doBuffering is false', () => {
-      const result = makeParseLine('FOO=bar', {doBuffering: false})
-      expect(result.buffer).toBe('')
-    })
-
-    it('still updates logic context when doBuffering is false', () => {
-      const env: Context = {BAR: 'value'}
-      const logic: Context = {}
-      makeParseLine('FOO=${BAR}', {doBuffering: false, env, logic})
-      expect(logic['BAR']).toBe('value')
-    })
-  })
 })
 
-describe('WarningPlaceholderListener', () => {
-  it('logs warning to console.warn', () => {
+describe('WarningFileListener', () => {
+  it('logs warning for missing placeholder', () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation()
-    WarningPlaceholderListener.onMissing({filePath: 'test.env', line: 5, col: 10}, 'MISSING_KEY')
+    WarningFileListener.onMissingPlaceholder({filePath: 'test.env', line: 5, col: 10}, 'MISSING_KEY')
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('MISSING_KEY'),
     )
@@ -151,12 +147,27 @@ describe('WarningPlaceholderListener', () => {
     )
     warnSpy.mockRestore()
   })
+
+  it('logs warning for no key pair', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation()
+    WarningFileListener.onNoKeyPair({filePath: 'test.env', line: 5, col: 1}, 'INVALID_LINE')
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('INVALID_LINE'),
+    )
+    warnSpy.mockRestore()
+  })
 })
 
-describe('ThrowingPlaceholderListener', () => {
-  it('throws error with key and file info', () => {
+describe('ThrowingFileListener', () => {
+  it('throws error for missing placeholder', () => {
     expect(() => {
-      ThrowingPlaceholderListener.onMissing({filePath: 'test.env', line: 5, col: 10}, 'MISSING_KEY')
+      ThrowingFileListener.onMissingPlaceholder({filePath: 'test.env', line: 5, col: 10}, 'MISSING_KEY')
     }).toThrow('MISSING_KEY')
+  })
+
+  it('throws error for no key pair', () => {
+    expect(() => {
+      ThrowingFileListener.onNoKeyPair({filePath: 'test.env', line: 5, col: 1}, 'BAD_LINE')
+    }).toThrow('BAD_LINE')
   })
 })

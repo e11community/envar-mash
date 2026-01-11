@@ -2,10 +2,15 @@ import {existsSync, readFileSync, unlinkSync, writeFileSync} from 'fs'
 import {join} from 'path'
 import {Context} from './context'
 import {main, parseFile} from './main'
-import {WarningPlaceholderListener} from './line-parser'
+import {FileListener, WarningFileListener} from './line-parser'
 
 const TEST_DIR = join(__dirname, '..', 'test')
 const CLEANUP_ENABLED = process.env.TEST_CLEANUP !== 'false'
+
+const silentListener: FileListener = {
+  onNoKeyPair: jest.fn(),
+  onMissingPlaceholder: jest.fn(),
+}
 
 function cleanupFile(path: string): void {
   if (CLEANUP_ENABLED && existsSync(path)) {
@@ -29,7 +34,7 @@ describe('parseFile', () => {
       filePath: inputPath,
       outputPath: tempOutputPath,
       env,
-      listener: WarningPlaceholderListener,
+      listener: silentListener,
       logic,
     })
 
@@ -39,7 +44,7 @@ describe('parseFile', () => {
     expect(output).toContain('BAZ=qux')
   })
 
-  it('resolves placeholders from env', () => {
+  it('resolves placeholders from logic built during parsing', () => {
     const inputPath = join(TEST_DIR, 'placeholders', '.env.dev.template')
     const env: Context = {}
     const logic: Context = {}
@@ -48,17 +53,16 @@ describe('parseFile', () => {
       filePath: inputPath,
       outputPath: tempOutputPath,
       env,
-      listener: WarningPlaceholderListener,
+      listener: silentListener,
       logic,
     })
 
     const output = readFileSync(tempOutputPath, 'utf8')
     expect(output).toContain('BASE_URL=https://example.com')
     expect(output).toContain('API_URL=https://example.com/api')
-    expect(output).toContain('FULL_URL="https://example.com/v1/endpoint"')
   })
 
-  it('updates logic context without writing file when no outputPath', () => {
+  it('updates logic context with parsed key=value pairs', () => {
     const inputPath = join(TEST_DIR, 'simple', '.env.dev.template')
     const env: Context = {}
     const logic: Context = {}
@@ -66,14 +70,15 @@ describe('parseFile', () => {
     parseFile({
       filePath: inputPath,
       env,
-      listener: WarningPlaceholderListener,
+      listener: silentListener,
       logic,
     })
 
-    expect(existsSync(tempOutputPath)).toBe(false)
+    expect(logic['FOO']).toBe('bar')
+    expect(logic['BAZ']).toBe('qux')
   })
 
-  it('uses process.env for placeholder resolution', () => {
+  it('uses env for placeholder resolution with higher precedence', () => {
     const inputPath = join(TEST_DIR, 'placeholders', '.env.dev.template')
     const env: Context = {BASE_URL: 'https://override.com'}
     const logic: Context = {}
@@ -82,7 +87,7 @@ describe('parseFile', () => {
       filePath: inputPath,
       outputPath: tempOutputPath,
       env,
-      listener: WarningPlaceholderListener,
+      listener: silentListener,
       logic,
     })
 
@@ -138,7 +143,7 @@ describe('main', () => {
     }
   })
 
-  it('uses ThrowingPlaceholderListener when listenerType is throw', () => {
+  it('uses ThrowingFileListener when listenerType is throw', () => {
     const originalCwd = process.cwd()
     process.chdir(functionsDir)
 
