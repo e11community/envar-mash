@@ -232,6 +232,38 @@ describe('main', () => {
       expect(result).toBe(0)
     })
 
+    it('handles missing dirTop gracefully', () => {
+      const result = main({
+        dirTarget,
+        dirTop: join(IMPL_DIR, 'nonexistent-env-dir'),
+        listenerType: 'warn',
+      })
+
+      expect(result).toBe(0)
+      expect(existsSync(outputPath)).toBe(true)
+    })
+
+    it('uses ThrowingFileListener when listenerType is throw', () => {
+      const badTemplatePath = join(dirTarget, '.env.bad.template')
+      const badOutputPath = join(dirTarget, '.env.bad')
+      writeFileSync(badTemplatePath, 'FOO=${TOTALLY_MISSING_VAR}\n')
+
+      try {
+        expect(() => {
+          main({
+            dirTarget,
+            dirTop,
+            listenerType: 'throw',
+          })
+        }).toThrow('TOTALLY_MISSING_VAR')
+      } finally {
+        // Always clean up test-specific files regardless of TEST_CLEANUP
+        if (existsSync(badTemplatePath)) unlinkSync(badTemplatePath)
+        if (existsSync(badOutputPath)) unlinkSync(badOutputPath)
+      }
+    })
+
+    // This test runs LAST so its output remains for inspection with test:inspect
     it('processes cascade of env files in correct order', () => {
       const result = main({
         dirTarget,
@@ -244,39 +276,14 @@ describe('main', () => {
 
       const output = readFileSync(outputPath, 'utf8')
       // From .env.ALL-before
-      expect(output).toContain('SERVICE_NAME=my-service')
-      // From .env.dev (environment-specific, overrides .env.ALL-before)
-      expect(output).toContain('LOG_LEVEL=debug')
+      expect(output).toContain('DEFAULT_TIMEOUT=30')
+      // From .env.dev (environment-specific)
       expect(output).toContain('API_KEY=dev-secret-key')
-    })
-
-    it('uses ThrowingFileListener when listenerType is throw', () => {
-      const badTemplatePath = join(dirTarget, '.env.bad.template')
-      writeFileSync(badTemplatePath, 'FOO=${TOTALLY_MISSING_VAR}\n')
-
-      try {
-        expect(() => {
-          main({
-            dirTarget,
-            dirTop,
-            listenerType: 'throw',
-          })
-        }).toThrow('TOTALLY_MISSING_VAR')
-      } finally {
-        cleanupFile(badTemplatePath)
-        cleanupFile(join(dirTarget, '.env.bad'))
-      }
-    })
-
-    it('handles missing dirTop gracefully', () => {
-      const result = main({
-        dirTarget,
-        dirTop: join(IMPL_DIR, 'nonexistent-env-dir'),
-        listenerType: 'warn',
-      })
-
-      expect(result).toBe(0)
-      expect(existsSync(outputPath)).toBe(true)
+      expect(output).toContain('LOG_LEVEL=debug')
+      // From template (with resolved placeholders)
+      expect(output).toContain('SERVICE_NAME=my-service')
+      // From .env.ALL-after
+      expect(output).toContain('FALLBACK_VALUE=fallback')
     })
   })
 

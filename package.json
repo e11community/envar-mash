@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc",
     "test": "jest",
-    "test:inspect": "TEST_CLEANUP=false jest"
+    "test:inspect": "TEST_CLEANUP=false jest",
+    "test:cleanup": "find impl -name '.env.*.template' -exec dirname {} \\; | sort -u | xargs -I{} find {} -maxdepth 1 -name '.env.*' ! -name '*.template' -type f -delete"
   },
   "keywords": [
     "envar",

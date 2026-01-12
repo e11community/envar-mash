@@ -145,7 +145,6 @@ export function main(request: MashRequest): number {
 
   // Process ALL-before once and save the state
   let allBeforeLogic: Context = {}
-  let allBeforeBuffer = ''
   let topChildren: string[] = []
 
   const statTop = statSync(request.dirTop, {throwIfNoEntry: false})
@@ -153,7 +152,7 @@ export function main(request: MashRequest): number {
     topChildren = readdirSync(request.dirTop, {encoding: 'utf8', recursive: false})
 
     if (topChildren.includes('.env.ALL-before')) {
-      allBeforeBuffer = parseFile({filePath: join(request.dirTop, '.env.ALL-before'), env, listener, logic: allBeforeLogic})
+      parseFile({filePath: join(request.dirTop, '.env.ALL-before'), env, listener, logic: allBeforeLogic})
     }
   }
 
@@ -161,24 +160,25 @@ export function main(request: MashRequest): number {
   for (const envName of envNames) {
     // Clone the ALL-before logic context for this ENV
     const logic: Context = {...allBeforeLogic}
-    let outputBuffer = allBeforeBuffer
 
     // Process env-specific file from dirTop
     if (topChildren.includes('.env.' + envName)) {
-      outputBuffer += parseFile({filePath: join(request.dirTop, '.env.' + envName), env, listener, logic})
+      parseFile({filePath: join(request.dirTop, '.env.' + envName), env, listener, logic})
     }
 
     // Process the template file
     const templatePath = join(request.dirTarget, '.env.' + envName + '.template')
-    outputBuffer += parseFile({filePath: templatePath, env, listener, logic})
+    parseFile({filePath: templatePath, env, listener, logic})
 
     // Process ALL-after
     if (topChildren.includes('.env.ALL-after')) {
-      outputBuffer += parseFile({filePath: join(request.dirTop, '.env.ALL-after'), env, listener, logic})
+      parseFile({filePath: join(request.dirTop, '.env.ALL-after'), env, listener, logic})
     }
 
-    // Write the combined output
+    // Write the deduplicated, sorted output
     const outputPath = join(request.dirTarget, '.env.' + envName)
+    const sortedKeys = Object.keys(logic).sort()
+    const outputBuffer = sortedKeys.map(key => `${key}=${logic[key]}`).join('\n') + '\n'
     writeFileSync(outputPath, outputBuffer, {encoding: 'utf8'})
   }
 

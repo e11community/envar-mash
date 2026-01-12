@@ -4,6 +4,7 @@ node_modules
 impl/**/.env.*
 !impl/**/.env.*.template
 !impl/*/env/functions/*
+temp-output.env
 
 # Use this block in a backend project
 # microservices/service-*/functions/.env.*

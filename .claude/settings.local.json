@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(yarn run test:cleanup:*)",
+      "Bash(yarn run test:inspect:*)"
+    ]
+  }
+}
