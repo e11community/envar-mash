@@ -2,11 +2,12 @@
   "name": "@e11community/envar-mash",
   "version": "1.0.0",
   "description": "Combine environment variables together from across different sources",
-  "main": "dist/main.js",
+  "main": "dist/cli.js",
+  "bin": {
+    "envar-mash": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
-    "package": "ncc build",
-    "all": "npm run build && npm run package",
     "test": "jest",
     "test:inspect": "TEST_CLEANUP=false jest"
   },
@@ -23,7 +24,6 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^22.15.3",
-    "@vercel/ncc": "^0.38.0",
     "jest": "^30.2.0",
     "prettier": "^3.5.3",
     "ts-jest": "^29.4.6",
