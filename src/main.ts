@@ -76,8 +76,41 @@ export function parseFile(request: ParseFileRequest): void {
 function addendLogic(logic: Context, line: string): void {
   const iPos = line.indexOf('=')
   const key = line.substring(0, iPos)
-  const value = line.substring(iPos + 1).trim()
-  // TODO "evaluate" value so logic does not have enclosing quotes
+  let value = line.substring(iPos + 1)
+
+  if (value.startsWith('"')) {
+    // Find the last non-escaped double quote (after the opening one)
+    let lastQuotePos = -1
+    for (let i = value.length - 1; i >= 1; i--) {
+      if (value[i] === '"') {
+        // Check if escaped by counting preceding backslashes
+        let backslashCount = 0
+        for (let j = i - 1; j >= 0 && value[j] === '\\'; j--) {
+          backslashCount++
+        }
+        // If even number of backslashes, quote is not escaped
+        if (backslashCount % 2 === 0) {
+          lastQuotePos = i
+          break
+        }
+      }
+    }
+
+    if (lastQuotePos !== -1) {
+      // Strip opening quote
+      value = value.substring(1)
+      // Adjust position after stripping opening quote
+      lastQuotePos--
+      // Strip the closing quote and trim trailing whitespace
+      value = value.substring(0, lastQuotePos) + value.substring(lastQuotePos + 1).trim()
+      // Resolve backslash escaping
+      value = value.replace(/\\(.)/g, '$1')
+    } else {
+      // No closing quote - keep literal but trim trailing whitespace
+      value = value.trimEnd()
+    }
+  }
+
   logic[key] = value
 }
 

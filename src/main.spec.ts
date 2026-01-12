@@ -94,6 +94,106 @@ describe('parseFile', () => {
     const output = readFileSync(tempOutputPath, 'utf8')
     expect(output).toContain('API_URL=https://override.com/api')
   })
+
+  describe('quoted value resolution in logic context', () => {
+    it('strips quotes from simple quoted values', () => {
+      const inputPath = join(TEST_DIR, 'quoted', '.env.dev.template')
+      const logic: Context = {}
+
+      parseFile({
+        filePath: inputPath,
+        env: {},
+        listener: silentListener,
+        logic,
+      })
+
+      expect(logic['SIMPLE']).toBe('hello world')
+    })
+
+    it('resolves escaped quotes inside quoted values', () => {
+      const inputPath = join(TEST_DIR, 'quoted', '.env.dev.template')
+      const logic: Context = {}
+
+      parseFile({
+        filePath: inputPath,
+        env: {},
+        listener: silentListener,
+        logic,
+      })
+
+      expect(logic['ESCAPED']).toBe('say "hello"')
+    })
+
+    it('resolves escaped backslashes', () => {
+      const inputPath = join(TEST_DIR, 'quoted', '.env.dev.template')
+      const logic: Context = {}
+
+      parseFile({
+        filePath: inputPath,
+        env: {},
+        listener: silentListener,
+        logic,
+      })
+
+      expect(logic['BACKSLASH']).toBe('path\\to\\file')
+    })
+
+    it('handles mixed escapes', () => {
+      const inputPath = join(TEST_DIR, 'quoted', '.env.dev.template')
+      const logic: Context = {}
+
+      parseFile({
+        filePath: inputPath,
+        env: {},
+        listener: silentListener,
+        logic,
+      })
+
+      expect(logic['MIXED']).toBe('quote " and backslash \\')
+    })
+
+    it('leaves unquoted values unchanged', () => {
+      const inputPath = join(TEST_DIR, 'quoted', '.env.dev.template')
+      const logic: Context = {}
+
+      parseFile({
+        filePath: inputPath,
+        env: {},
+        listener: silentListener,
+        logic,
+      })
+
+      expect(logic['UNQUOTED']).toBe('no quotes here')
+    })
+
+    it('keeps literal value with leading quote when no closing quote', () => {
+      const inputPath = join(TEST_DIR, 'quoted', '.env.dev.template')
+      const logic: Context = {}
+
+      parseFile({
+        filePath: inputPath,
+        env: {},
+        listener: silentListener,
+        logic,
+      })
+
+      expect(logic['UNCLOSED']).toBe('"no closing quote here')
+    })
+
+    it('keeps literal value when only escaped quotes present', () => {
+      const inputPath = join(TEST_DIR, 'quoted', '.env.dev.template')
+      const logic: Context = {}
+
+      parseFile({
+        filePath: inputPath,
+        env: {},
+        listener: silentListener,
+        logic,
+      })
+
+      expect(logic['UNCLOSED_ESCAPED']).toBe('"only escaped \\"quotes\\" here')
+    })
+  })
 })
 
 describe('main', () => {
