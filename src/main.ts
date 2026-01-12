@@ -76,7 +76,7 @@ export function parseFile(request: ParseFileRequest): void {
 function addendLogic(logic: Context, line: string): void {
   const iPos = line.indexOf('=')
   const key = line.substring(0, iPos)
-  const value = line.substring(iPos + 1)
+  const value = line.substring(iPos + 1).trim()
   // TODO "evaluate" value so logic does not have enclosing quotes
   logic[key] = value
 }

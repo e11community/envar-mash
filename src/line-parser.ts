@@ -63,11 +63,13 @@ export function parseLine(request: ParseLineRequest): ParseLineResponse {
       if (curChar === "'") {
         prevState = curState
         curState = 'single-quote'
+        buffer += curChar
       } else if (curChar === '"') {
         prevState = curState
         curState = 'double-quote'
+        buffer += curChar
       } else if (curChar === '#') {
-        buffer += request.line.substring(posCur)
+        // buffer += request.line.substring(posCur)
         return {buffer, curState, curLinePivot}
       } else if (curChar === '{' && prevChar === '$') {
         prevState = curState

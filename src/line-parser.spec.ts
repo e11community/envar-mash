@@ -1,13 +1,5 @@
 import {Context} from './context'
-import {
-  parseLine,
-  ParseLineRequest,
-  ParseState,
-  LinePivot,
-  FileListener,
-  ThrowingFileListener,
-  WarningFileListener,
-} from './line-parser'
+import {parseLine, ParseLineRequest, ParseState, LinePivot, FileListener, ThrowingFileListener, WarningFileListener} from './line-parser'
 
 describe('parseLine', () => {
   const defaultParseContext = {filePath: 'test.env', line: 1, col: 1}
@@ -56,7 +48,7 @@ describe('parseLine', () => {
 
     it('handles comments by stopping at #', () => {
       const result = makeParseLine('FOO=bar # this is a comment')
-      expect(result.buffer).toBe('FOO=bar # this is a comment')
+      expect(result.buffer).toBe('FOO=bar ')
     })
 
     it('tracks pivot transition from key to value at =', () => {
@@ -71,27 +63,27 @@ describe('parseLine', () => {
   })
 
   describe('quoted strings', () => {
-    it('handles double-quoted values (strips opening quote)', () => {
+    it('handles double-quoted values', () => {
       const result = makeParseLine('FOO="bar baz"')
-      expect(result.buffer).toBe('FOO=bar baz"')
+      expect(result.buffer).toBe('FOO="bar baz"')
     })
 
-    it('handles single-quoted values (strips opening quote)', () => {
+    it('handles single-quoted values', () => {
       const result = makeParseLine("FOO='bar baz'")
-      expect(result.buffer).toBe("FOO=bar baz'")
+      expect(result.buffer).toBe("FOO='bar baz'")
     })
 
     it('handles escaped characters in double quotes', () => {
       const result = makeParseLine('FOO="bar\\"baz"')
-      expect(result.buffer).toBe('FOO=bar\\"baz"')
+      expect(result.buffer).toBe('FOO="bar\\"baz"')
     })
   })
 
   describe('placeholder substitution', () => {
     it('substitutes placeholder from env', () => {
-      const env: Context = {BAR: 'resolved-value'}
+      const env: Context = {BAR: 'env-value'}
       const result = makeParseLine('FOO=${BAR}', {env})
-      expect(result.buffer).toBe('FOO=resolved-value')
+      expect(result.buffer).toBe('FOO=env-value')
     })
 
     it('substitutes placeholder from logic context', () => {
@@ -107,10 +99,10 @@ describe('parseLine', () => {
       expect(result.buffer).toBe('FOO=env-value')
     })
 
-    it('substitutes placeholder inside double quotes (strips opening quote)', () => {
+    it('substitutes placeholder inside double quotes', () => {
       const env: Context = {BAR: 'value'}
       const result = makeParseLine('FOO="${BAR}"', {env})
-      expect(result.buffer).toBe('FOO=value"')
+      expect(result.buffer).toBe('FOO="value"')
     })
 
     it('handles multiple placeholders on same line', () => {
@@ -139,21 +131,15 @@ describe('WarningFileListener', () => {
   it('logs warning for missing placeholder', () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation()
     WarningFileListener.onMissingPlaceholder({filePath: 'test.env', line: 5, col: 10}, 'MISSING_KEY')
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('MISSING_KEY'),
-    )
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('test.env'),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('MISSING_KEY'))
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('test.env'))
     warnSpy.mockRestore()
   })
 
   it('logs warning for no key pair', () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation()
     WarningFileListener.onNoKeyPair({filePath: 'test.env', line: 5, col: 1}, 'INVALID_LINE')
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('INVALID_LINE'),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('INVALID_LINE'))
     warnSpy.mockRestore()
   })
 })
