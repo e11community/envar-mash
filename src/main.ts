@@ -6,7 +6,6 @@ import {ParseState, FileListener, ThrowingFileListener, WarningFileListener, par
 type MashRequest = {
   readonly dirTarget: string
   readonly dirTop: string
-  readonly environmentName: string
   readonly listenerType: 'throw' | 'warn'
 }
 
@@ -16,7 +15,7 @@ type ParseFileRequest = {
 
   /**
    * Write placeholder resolution of **filePath** to this **path**.
-   * If undefined, no file output, but logic context is still updated.
+   * If undefined, no file output.
    */
   readonly outputPath?: string
 
@@ -36,7 +35,7 @@ type ParseFileRequest = {
   readonly logic: Context
 }
 
-export function parseFile(request: ParseFileRequest): void {
+export function parseFile(request: ParseFileRequest): string {
   const {env, filePath, listener, logic, outputPath} = request
   const contents = readFileSync(filePath, {encoding: 'utf8'})
   const lines = contents.split('\n')
@@ -63,14 +62,14 @@ export function parseFile(request: ParseFileRequest): void {
     if (buffer.trim().length === 0) continue
     if (curLinePivot === 'key') listener.onNoKeyPair(parseContext, buffer)
     addendLogic(logic, buffer)
-    if (outputPath) {
-      data += response.buffer + '\n'
-    }
+    data += response.buffer + '\n'
   }
 
   if (outputPath) {
     writeFileSync(outputPath, data, {encoding: 'utf8'})
   }
+
+  return data
 }
 
 function addendLogic(logic: Context, line: string): void {
@@ -114,35 +113,74 @@ function addendLogic(logic: Context, line: string): void {
   logic[key] = value
 }
 
+/**
+ * Discovers environment names from template files in dirTarget.
+ * Looks for files matching `.env.*.template` and extracts the ENV name.
+ */
+function discoverEnvironments(dirTarget: string): string[] {
+  const stat = statSync(dirTarget, {throwIfNoEntry: false})
+  if (!stat) return []
+
+  const children = readdirSync(dirTarget, {encoding: 'utf8', recursive: false})
+  const envNames: string[] = []
+
+  for (const child of children) {
+    const match = child.match(/^\.env\.([a-z]+)\.template$/)
+    if (match && match[1]) {
+      envNames.push(match[1])
+    }
+  }
+
+  return envNames
+}
+
 export function main(request: MashRequest): number {
-  const targetPath = join(request.dirTarget, '.env.' + request.environmentName + '.template')
-  const statTarget = statSync(targetPath, {throwIfNoEntry: false})
-  if (!statTarget) {
-    console.log(`File [${targetPath}] is not present. Exiting.`)
+  const envNames = discoverEnvironments(request.dirTarget)
+  if (envNames.length === 0) {
     return 0
   }
 
   const env: Context = process.env
-  const logic: Context = {}
   const listener: FileListener = request.listenerType === 'throw' ? ThrowingFileListener : WarningFileListener
+
+  // Process ALL-before once and save the state
+  let allBeforeLogic: Context = {}
+  let allBeforeBuffer = ''
+  let topChildren: string[] = []
 
   const statTop = statSync(request.dirTop, {throwIfNoEntry: false})
   if (statTop) {
-    const children = readdirSync(request.dirTop, {encoding: 'utf8', recursive: false})
-    if (children.includes('.env.ALL-after')) {
-      parseFile({filePath: join(request.dirTop, '.env.ALL-after'), env, listener, logic})
-    }
+    topChildren = readdirSync(request.dirTop, {encoding: 'utf8', recursive: false})
 
-    if (children.includes('.env.ALL-before')) {
-      parseFile({filePath: join(request.dirTop, '.env.ALL-before'), env, listener, logic})
-    }
-
-    if (children.includes('.env.' + request.environmentName)) {
-      parseFile({filePath: join(request.dirTop, '.env.' + request.environmentName), env, listener, logic})
+    if (topChildren.includes('.env.ALL-before')) {
+      allBeforeBuffer = parseFile({filePath: join(request.dirTop, '.env.ALL-before'), env, listener, logic: allBeforeLogic})
     }
   }
 
-  parseFile({filePath: targetPath, env, listener, logic, outputPath: join(request.dirTarget, '.env.' + request.environmentName)})
+  // Process each discovered environment
+  for (const envName of envNames) {
+    // Clone the ALL-before logic context for this ENV
+    const logic: Context = {...allBeforeLogic}
+    let outputBuffer = allBeforeBuffer
+
+    // Process env-specific file from dirTop
+    if (topChildren.includes('.env.' + envName)) {
+      outputBuffer += parseFile({filePath: join(request.dirTop, '.env.' + envName), env, listener, logic})
+    }
+
+    // Process the template file
+    const templatePath = join(request.dirTarget, '.env.' + envName + '.template')
+    outputBuffer += parseFile({filePath: templatePath, env, listener, logic})
+
+    // Process ALL-after
+    if (topChildren.includes('.env.ALL-after')) {
+      outputBuffer += parseFile({filePath: join(request.dirTop, '.env.ALL-after'), env, listener, logic})
+    }
+
+    // Write the combined output
+    const outputPath = join(request.dirTarget, '.env.' + envName)
+    writeFileSync(outputPath, outputBuffer, {encoding: 'utf8'})
+  }
 
   return 0
 }

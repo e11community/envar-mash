@@ -25,7 +25,23 @@ describe('parseFile', () => {
     cleanupFile(tempOutputPath)
   })
 
-  it('parses simple env file and writes output', () => {
+  it('parses simple env file and returns output', () => {
+    const inputPath = join(IMPL_DIR, 'simple', '.env.dev.template')
+    const env: Context = {}
+    const logic: Context = {}
+
+    const output = parseFile({
+      filePath: inputPath,
+      env,
+      listener: silentListener,
+      logic,
+    })
+
+    expect(output).toContain('FOO=bar')
+    expect(output).toContain('BAZ=qux')
+  })
+
+  it('writes output to file when outputPath is provided', () => {
     const inputPath = join(IMPL_DIR, 'simple', '.env.dev.template')
     const env: Context = {}
     const logic: Context = {}
@@ -39,9 +55,9 @@ describe('parseFile', () => {
     })
 
     expect(existsSync(tempOutputPath)).toBe(true)
-    const output = readFileSync(tempOutputPath, 'utf8')
-    expect(output).toContain('FOO=bar')
-    expect(output).toContain('BAZ=qux')
+    const fileContent = readFileSync(tempOutputPath, 'utf8')
+    expect(fileContent).toContain('FOO=bar')
+    expect(fileContent).toContain('BAZ=qux')
   })
 
   it('resolves placeholders from logic built during parsing', () => {
@@ -49,15 +65,13 @@ describe('parseFile', () => {
     const env: Context = {}
     const logic: Context = {}
 
-    parseFile({
+    const output = parseFile({
       filePath: inputPath,
-      outputPath: tempOutputPath,
       env,
       listener: silentListener,
       logic,
     })
 
-    const output = readFileSync(tempOutputPath, 'utf8')
     expect(output).toContain('BASE_URL=https://example.com')
     expect(output).toContain('API_URL=https://example.com/api')
   })
@@ -83,7 +97,7 @@ describe('parseFile', () => {
     const env: Context = {BASE_URL: 'https://override.com'}
     const logic: Context = {}
 
-    parseFile({
+    const output = parseFile({
       filePath: inputPath,
       outputPath: tempOutputPath,
       env,
@@ -91,8 +105,9 @@ describe('parseFile', () => {
       logic,
     })
 
-    const output = readFileSync(tempOutputPath, 'utf8')
     expect(output).toContain('API_URL=https://override.com/api')
+    const fileContent = readFileSync(tempOutputPath, 'utf8')
+    expect(fileContent).toContain('API_URL=https://override.com/api')
   })
 
   describe('quoted value resolution in logic context', () => {
@@ -207,11 +222,10 @@ describe('main', () => {
       cleanupFile(outputPath)
     })
 
-    it('returns 0 when template file does not exist', () => {
+    it('returns 0 when no template files exist', () => {
       const result = main({
         dirTarget: join(IMPL_DIR, 'nonexistent'),
         dirTop,
-        environmentName: 'dev',
         listenerType: 'warn',
       })
 
@@ -222,7 +236,6 @@ describe('main', () => {
       const result = main({
         dirTarget,
         dirTop,
-        environmentName: 'dev',
         listenerType: 'warn',
       })
 
@@ -230,6 +243,7 @@ describe('main', () => {
       expect(existsSync(outputPath)).toBe(true)
 
       const output = readFileSync(outputPath, 'utf8')
+      // From .env.ALL-before
       expect(output).toContain('SERVICE_NAME=my-service')
       // From .env.dev (environment-specific, overrides .env.ALL-before)
       expect(output).toContain('LOG_LEVEL=debug')
@@ -245,7 +259,6 @@ describe('main', () => {
           main({
             dirTarget,
             dirTop,
-            environmentName: 'bad',
             listenerType: 'throw',
           })
         }).toThrow('TOTALLY_MISSING_VAR')
@@ -259,7 +272,6 @@ describe('main', () => {
       const result = main({
         dirTarget,
         dirTop: join(IMPL_DIR, 'nonexistent-env-dir'),
-        environmentName: 'dev',
         listenerType: 'warn',
       })
 
@@ -284,7 +296,6 @@ describe('main', () => {
         const result = main({
           dirTarget,
           dirTop,
-          environmentName: 'qa',
           listenerType: 'warn',
         })
 
@@ -310,7 +321,6 @@ describe('main', () => {
         const result = main({
           dirTarget,
           dirTop,
-          environmentName: 'qa',
           listenerType: 'warn',
         })
 
@@ -340,7 +350,6 @@ describe('main', () => {
         const result = main({
           dirTarget,
           dirTop,
-          environmentName: 'qa',
           listenerType: 'warn',
         })
 
@@ -369,7 +378,6 @@ describe('main', () => {
         const result = main({
           dirTarget,
           dirTop,
-          environmentName: 'qa',
           listenerType: 'warn',
         })
 
@@ -402,7 +410,6 @@ describe('main', () => {
         const result = main({
           dirTarget,
           dirTop,
-          environmentName: 'prod',
           listenerType: 'warn',
         })
 
@@ -415,7 +422,7 @@ describe('main', () => {
         expect(output).toContain('ENVIRONMENT=production')
         expect(output).toContain('API_ENDPOINT=https://api.example.com')
         // From .env.ALL-after
-        expect(output).toContain('TIMEOUT=60')
+        expect(output).toContain('FALLBACK_TIMEOUT=60')
       })
     })
 
@@ -431,7 +438,6 @@ describe('main', () => {
         const result = main({
           dirTarget,
           dirTop,
-          environmentName: 'prod',
           listenerType: 'warn',
         })
 
@@ -443,7 +449,7 @@ describe('main', () => {
         // From .env.prod
         expect(output).toContain('ENVIRONMENT=production')
         // From .env.ALL-after
-        expect(output).toContain('RETRY=3')
+        expect(output).toContain('RETRY_COUNT=3')
       })
     })
   })

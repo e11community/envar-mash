@@ -10,21 +10,35 @@ envar-mash combines environment variables from multiple sources into a single ou
 
 ```bash
 yarn build          # Compile TypeScript to dist/
-yarn package        # Bundle with ncc for distribution
-yarn all            # Build then package
 yarn test           # Run Jest tests (with cleanup)
 yarn test:inspect   # Run tests without cleanup (examine output files)
 ```
 
+## CLI Usage
+
+```bash
+envar-mash [--top=PATH] [--target=PATH] [--listener=throw|warn]
+```
+
+- `--top` - Path to directory containing source .env files (default: `{project}/env/functions` where `{project}` is the directory containing yarn.lock)
+- `--target` - Path to directory containing `.env.*.template` files (default: current working directory)
+- `--listener` - How to handle missing placeholders: `throw` or `warn` (default: `warn`)
+
+Environments are auto-discovered from `.env.*.template` files in the target directory. Environment names must be lowercase letters only (e.g., `dev`, `qa`, `prod`).
+
 ## Architecture
 
-The codebase is a TypeScript CLI with three modules:
+The codebase is a TypeScript CLI with four modules:
 
-- **main.ts** - Entry point and file orchestration. Processes env files in precedence order:
-  1. `.env.ALL-after` (lowest precedence, loaded first)
-  2. `.env.ALL-before`
-  3. `.env.{ENV}` (environment-specific)
-  4. `.env.{ENV}.template` (target template, highest precedence)
+- **cli.ts** - CLI entry point. Parses arguments, finds project root via yarn.lock, calls main.
+
+- **main.ts** - File orchestration. Auto-discovers ENVs from template files, processes env files in order:
+  1. `.env.ALL-before` (from dirTop, processed once, state saved)
+  2. `.env.{ENV}` (from dirTop, environment-specific)
+  3. `.env.{ENV}.template` (from dirTarget)
+  4. `.env.ALL-after` (from dirTop)
+
+  All keypairs from all sources are output to `.env.{ENV}` in processing order.
 
 - **line-parser.ts** - State machine parser handling quotes, escapes, comments, and `${placeholder}` substitution. States: `normal`, `single-quote`, `double-quote`, `maybe-placeholder`, `escaping`. Tracks `LinePivot` to distinguish key vs value parsing.
 
@@ -32,10 +46,11 @@ The codebase is a TypeScript CLI with three modules:
 
 ## Key Concepts
 
-- **MashRequest**: Core input with `dirTop` (source env files), `dirTarget` (template location), `environmentName`, and `listenerType`
-- **Placeholder resolution**: `${KEY}` syntax resolves against process.env first, then the accumulated logic context
+- **MashRequest**: Core input with `dirTop` (source env files), `dirTarget` (template location), and `listenerType`
+- **Placeholder resolution**: `${KEY}` syntax resolves against process.env first, then the accumulated logic context. Templates can only reference values from ALL-before or .env.{ENV}, not from ALL-after.
 - **Quoted value handling**: Double-quoted values have quotes stripped and escapes resolved (`\"` → `"`, `\\` → `\`). Unclosed quotes are kept literal.
 - **FileListener**: Handles events like `onMissingPlaceholder` and `onNoKeyPair` (throw error or warn)
+- **parseFile**: Returns the processed buffer string and optionally writes to outputPath
 
 ## Test Harness Structure (impl/)
 
