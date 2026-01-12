@@ -142,7 +142,7 @@ export function main(request: MashRequest): number {
     }
   }
 
-  parseFile({filePath: targetPath, env, listener, logic, outputPath: '.env.' + request.environmentName})
+  parseFile({filePath: targetPath, env, listener, logic, outputPath: join(request.dirTarget, '.env.' + request.environmentName)})
 
   return 0
 }
